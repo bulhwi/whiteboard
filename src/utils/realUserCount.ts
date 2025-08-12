@@ -23,6 +23,24 @@ class RealUserCount {
     this.isActive = true;
 
     try {
+      // 테이블 존재 확인을 위한 간단한 테스트
+      console.log('🔍 Testing database connection...');
+      const { error: testError } = await supabase
+        .from('active_users')
+        .select('id')
+        .limit(1);
+
+      if (testError) {
+        console.warn('❌ Database test failed:', testError.message);
+        console.warn('⚠️ RealUserCount disabled - table may not exist');
+        this.isActive = false;
+        // Fallback: 사용자 수를 1로 고정
+        this.notifyListeners(1);
+        return;
+      }
+
+      console.log('✅ Database test passed, registering user...');
+
       // 현재 사용자를 데이터베이스에 등록
       await this.registerUser();
 
@@ -43,7 +61,19 @@ class RealUserCount {
     } catch (error) {
       console.warn('Failed to start RealUserCount:', error);
       this.isActive = false;
+      // Fallback: 사용자 수를 1로 설정
+      this.notifyListeners(1);
     }
+  }
+
+  private notifyListeners(count: number) {
+    this.userCountListeners.forEach(callback => {
+      try {
+        callback(count);
+      } catch (error) {
+        console.error('User count listener error:', error);
+      }
+    });
   }
 
   stop() {
@@ -52,42 +82,64 @@ class RealUserCount {
 
   private async registerUser() {
     try {
+      // 안전한 사용자 데이터 생성 (null/undefined 값 방지)
       const userData = {
-        id: this.currentUserId,
+        id: String(this.currentUserId || `user-${Date.now()}`),
         joined_at: new Date().toISOString(),
         last_heartbeat: new Date().toISOString(),
-        user_agent: navigator.userAgent,
-        ip_info: 'unknown' // IP는 서버에서 감지해야 하지만 일단 placeholder
+        user_agent: String(navigator?.userAgent || 'unknown'),
+        ip_info: 'unknown'
       };
+
+      console.log('👤 Registering user with data:', userData);
 
       const { error } = await supabase
         .from('active_users')
-        .upsert(userData, { onConflict: 'id' });
+        .upsert(userData, { 
+          onConflict: 'id'
+        });
 
       if (error) {
-        console.warn('Failed to register user:', error);
+        console.warn('Failed to register user:', error.message, error.details);
       } else {
-        console.log('✅ User registered:', this.currentUserId);
+        console.log('✅ User registered successfully:', this.currentUserId);
       }
     } catch (error) {
-      console.warn('Error registering user:', error);
+      console.warn('Error in registerUser:', error);
     }
   }
 
   private async sendHeartbeat() {
     try {
+      // 데이터 검증
+      if (!this.currentUserId) {
+        console.warn('No current user ID for heartbeat');
+        return;
+      }
+
+      const updateData = {
+        last_heartbeat: new Date().toISOString()
+      };
+
+      console.log('💓 Sending heartbeat for user:', this.currentUserId);
+
       const { error } = await supabase
         .from('active_users')
-        .update({ 
-          last_heartbeat: new Date().toISOString() 
-        })
-        .eq('id', this.currentUserId);
+        .update(updateData)
+        .eq('id', String(this.currentUserId));
 
       if (error) {
-        console.warn('Heartbeat failed:', error);
+        console.warn('Heartbeat failed:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+      } else {
+        console.log('💓 Heartbeat sent successfully');
       }
     } catch (error) {
-      console.warn('Error sending heartbeat:', error);
+      console.warn('Error in sendHeartbeat:', error);
     }
   }
 
@@ -109,13 +161,7 @@ class RealUserCount {
       console.log('👥 Active users:', activeUserCount);
       
       // 모든 리스너에게 알림
-      this.userCountListeners.forEach(callback => {
-        try {
-          callback(activeUserCount);
-        } catch (error) {
-          console.error('User count listener error:', error);
-        }
-      });
+      this.notifyListeners(activeUserCount);
 
     } catch (error) {
       console.warn('Error in checkUserCount:', error);
