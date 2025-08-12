@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
+import { pollingSync } from '../utils/pollingSync';
 import { usePresence } from './usePresence';
 import type { ChatMessage } from '../types/whiteboard';
 
@@ -12,7 +13,9 @@ interface MessageBroadcastPayload {
 
 export const useChat = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [usesFallback, setUsesFallback] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const fallbackCleanupRef = useRef<(() => void) | null>(null);
   const { currentUser } = usePresence();
 
   useEffect(() => {
@@ -36,13 +39,44 @@ export const useChat = () => {
     });
 
     channel.subscribe((status) => {
-      console.log('Chat connection status:', status);
+      console.log('💬 Chat channel status:', status);
+      
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Chat connected successfully');
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.log('⚠️ Chat failed, switching to fallback mode');
+        activateFallbackMode();
+      }
     });
 
-    return () => {
-      channel.unsubscribe();
+    const activateFallbackMode = () => {
+      if (usesFallback) return;
+      
+      setUsesFallback(true);
+      pollingSync.start();
+      
+      fallbackCleanupRef.current = pollingSync.onDataChange((data) => {
+        setMessages(data.messages || []);
+      });
     };
-  }, [currentUser?.id]);
+
+    // Auto-activate fallback after 5 seconds if no successful connection
+    const fallbackTimeout = setTimeout(() => {
+      if (!usesFallback) {
+        console.log('⏰ Auto-activating chat fallback mode due to timeout');
+        activateFallbackMode();
+      }
+    }, 5000);
+
+    return () => {
+      clearTimeout(fallbackTimeout);
+      channel.unsubscribe();
+      
+      if (fallbackCleanupRef.current) {
+        fallbackCleanupRef.current();
+      }
+    };
+  }, [currentUser?.id, usesFallback]);
 
   const sendMessage = (content: string) => {
     if (!currentUser) return;
@@ -59,14 +93,18 @@ export const useChat = () => {
     // Add message locally first for immediate feedback
     setMessages(prev => [...prev, newMessage]);
 
-    // Broadcast to other users via Supabase
-    const payload: MessageBroadcastPayload = {
-      type: 'message',
-      message: newMessage,
-      userId: currentUser.id,
-    };
+    if (usesFallback) {
+      // Use fallback mode
+      pollingSync.updateData('message', newMessage);
+      console.log('📤 Message sent via fallback mode:', newMessage.content);
+    } else if (channelRef.current) {
+      // Use Realtime
+      const payload: MessageBroadcastPayload = {
+        type: 'message',
+        message: newMessage,
+        userId: currentUser.id,
+      };
 
-    if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
         event: 'message',

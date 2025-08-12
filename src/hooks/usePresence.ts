@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
+import { pollingSync } from '../utils/pollingSync';
 import type { User } from '../types/whiteboard';
 
 const USER_COLORS = [
@@ -31,8 +32,10 @@ export const usePresence = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isBlocked, setIsBlocked] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
+  const [usesFallback, setUsesFallback] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const currentUserRef = useRef<User | null>(null);
+  const fallbackCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!currentUserRef.current) {
@@ -103,28 +106,72 @@ export const usePresence = () => {
       });
 
       channel.subscribe(async (status) => {
+        console.log('👥 Presence channel status:', status);
+        
         if (status === 'SUBSCRIBED' && currentUserRef.current) {
           await channel.track(currentUserRef.current);
+          console.log('✅ Presence tracking started');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.log('⚠️ Presence failed, switching to fallback mode');
+          activateFallbackMode();
         }
       });
 
 
+    const activateFallbackMode = () => {
+      if (usesFallback) return;
+      
+      setUsesFallback(true);
+      pollingSync.start();
+      
+      if (currentUserRef.current) {
+        pollingSync.updateData('user', currentUserRef.current);
+      }
+      
+      fallbackCleanupRef.current = pollingSync.onDataChange((data) => {
+        setUsers(data.users || []);
+      });
+    };
+
+    // Auto-activate fallback after 5 seconds if no successful connection
+    const fallbackTimeout = setTimeout(() => {
+      if (channelRef.current && !usesFallback) {
+        console.log('⏰ Auto-activating fallback mode due to timeout');
+        activateFallbackMode();
+      }
+    }, 5000);
+
     return () => {
+      clearTimeout(fallbackTimeout);
+      
       if (channel) {
         channel.untrack();
         channel.unsubscribe();
       }
+      
+      if (fallbackCleanupRef.current) {
+        fallbackCleanupRef.current();
+      }
+      
+      if (usesFallback) {
+        pollingSync.stop();
+      }
     };
-  }, []);
+  }, [usesFallback]);
 
   const updateCursor = (x: number, y: number) => {
-    if (channelRef.current && currentUserRef.current) {
+    if (currentUserRef.current) {
       const updatedUser = {
         ...currentUserRef.current,
         cursor: { x, y },
       };
       currentUserRef.current = updatedUser;
-      channelRef.current.track(updatedUser);
+      
+      if (usesFallback) {
+        pollingSync.updateData('user', updatedUser);
+      } else if (channelRef.current) {
+        channelRef.current.track(updatedUser);
+      }
     }
   };
 
