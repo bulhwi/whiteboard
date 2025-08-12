@@ -17,7 +17,8 @@ CREATE INDEX IF NOT EXISTS idx_active_users_last_heartbeat ON active_users(last_
 ALTER TABLE active_users ENABLE ROW LEVEL SECURITY;
 
 -- 모든 사용자가 읽고 쓸 수 있도록 정책 설정
-CREATE POLICY IF NOT EXISTS "Enable all operations for active_users" ON active_users FOR ALL USING (true);
+DROP POLICY IF EXISTS "Enable all operations for active_users" ON active_users;
+CREATE POLICY "Enable all operations for active_users" ON active_users FOR ALL USING (true);
 
 -- 1. 화이트보드 사용자 테이블
 CREATE TABLE IF NOT EXISTS whiteboard_users (
@@ -66,9 +67,14 @@ ALTER TABLE whiteboard_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whiteboard_strokes ENABLE ROW LEVEL SECURITY;
 
 -- 모든 사용자가 읽고 쓸 수 있도록 정책 설정
-CREATE POLICY IF NOT EXISTS "Enable all operations for whiteboard_users" ON whiteboard_users FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "Enable all operations for whiteboard_messages" ON whiteboard_messages FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "Enable all operations for whiteboard_strokes" ON whiteboard_strokes FOR ALL USING (true);
+DROP POLICY IF EXISTS "Enable all operations for whiteboard_users" ON whiteboard_users;
+CREATE POLICY "Enable all operations for whiteboard_users" ON whiteboard_users FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Enable all operations for whiteboard_messages" ON whiteboard_messages;
+CREATE POLICY "Enable all operations for whiteboard_messages" ON whiteboard_messages FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Enable all operations for whiteboard_strokes" ON whiteboard_strokes;
+CREATE POLICY "Enable all operations for whiteboard_strokes" ON whiteboard_strokes FOR ALL USING (true);
 
 -- 자동 정리 함수 (선택사항)
 CREATE OR REPLACE FUNCTION cleanup_old_whiteboard_data()
