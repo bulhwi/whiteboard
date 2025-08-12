@@ -17,6 +17,8 @@ export const useChat = () => {
 
   useEffect(() => {
     console.log('🚀 Starting Supabase chat connection...');
+    console.log('💬 Current user for chat:', currentUser);
+    console.log('🔍 Environment mode:', import.meta.env.MODE);
 
     const channel = supabase.channel('chat-room', {
       config: {

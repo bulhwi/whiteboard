@@ -41,10 +41,11 @@ export const usePresence = () => {
         nickname: generateRandomNickname(),
         color: USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)],
       };
-      console.log('Created new currentUser:', currentUserRef.current);
+      console.log('👤 Created new currentUser:', currentUserRef.current);
     }
 
     console.log('🚀 Starting Supabase presence connection...');
+    console.log('🔍 Current environment mode:', import.meta.env.MODE);
 
     let channel: RealtimeChannel;
       channel = supabase.channel('presence', {

@@ -10,6 +10,7 @@ import ErrorBoundary from './components/Shared/ErrorBoundary';
 import HelpModal from './components/Shared/HelpModal';
 import PerformanceDashboard from './components/Shared/PerformanceDashboard';
 import RealtimeStatus from './components/Shared/RealtimeStatus';
+import DebugPanel from './components/Shared/DebugPanel';
 import Chat from './components/Chat/Chat';
 import { usePresence } from './hooks/usePresence';
 import { useKeyboard } from './hooks/useKeyboard';
@@ -86,6 +87,7 @@ const AppContent = () => {
       />
       <PerformanceDashboard />
       <RealtimeStatus />
+      <DebugPanel />
     </>
   );
 };
