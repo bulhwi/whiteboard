@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { simpleSync } from '../utils/simpleSync';
+import { crossTabSync } from '../utils/crossTabSync';
 import { usePresence } from './usePresence';
 import type { ChatMessage } from '../types/whiteboard';
 
@@ -44,28 +44,28 @@ export const useChat = () => {
       if (status === 'SUBSCRIBED') {
         console.log('✅ Chat connected successfully');
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.log('⚠️ Chat failed, switching to simple sync mode');
-        activateSimpleSync();
+        console.log('⚠️ Chat failed, switching to cross-tab sync');
+        activateCrossTabSync();
       }
     });
 
-    const activateSimpleSync = () => {
+    const activateCrossTabSync = () => {
       if (usesFallback) return;
       
-      console.log('🔄 Activating simple sync for chat');
+      console.log('🔄 Activating cross-tab sync for chat');
       setUsesFallback(true);
       
-      fallbackCleanupRef.current = simpleSync.subscribe((data) => {
-        console.log('💬 Received messages update:', data.messages.length);
+      fallbackCleanupRef.current = crossTabSync.subscribe((data) => {
+        console.log('💬 Cross-tab messages update:', data.messages.length);
         setMessages(data.messages || []);
       });
     };
 
-    // Auto-activate simple sync after 3 seconds if no successful connection
+    // Auto-activate cross-tab sync after 3 seconds
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating simple sync for chat due to timeout');
-        activateSimpleSync();
+        console.log('⏰ Auto-activating cross-tab sync for chat due to timeout');
+        activateCrossTabSync();
       }
     }, 3000);
 
@@ -92,9 +92,9 @@ export const useChat = () => {
     };
 
     if (usesFallback) {
-      // Use simple sync mode
-      simpleSync.addMessage(newMessage);
-      console.log('📤 Message sent via simple sync:', newMessage.content);
+      // Use cross-tab sync mode  
+      crossTabSync.addMessage(newMessage);
+      console.log('📤 Message sent via cross-tab sync:', newMessage.content);
     } else {
       // Add message locally first for immediate feedback (Realtime mode)
       setMessages(prev => [...prev, newMessage]);

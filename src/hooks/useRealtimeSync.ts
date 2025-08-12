@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { simpleSync } from '../utils/simpleSync';
+import { crossTabSync } from '../utils/crossTabSync';
 import { useWhiteboardContext } from '../context/WhiteboardContext';
 import { throttle } from '../utils/throttle';
 import type { DrawStroke } from '../types/whiteboard';
@@ -25,14 +25,14 @@ export const useRealtimeSync = () => {
   const userIdRef = useRef<string>(`user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   useEffect(() => {
-    const activateSimpleSync = () => {
+    const activateCrossTabSync = () => {
       if (usesFallback) return;
       
-      console.log('🔄 Activating simple sync for drawing');
+      console.log('🔄 Activating cross-tab sync for drawing');
       setUsesFallback(true);
       
-      fallbackCleanupRef.current = simpleSync.subscribe((data) => {
-        console.log('🎨 Received strokes update:', data.strokes.length);
+      fallbackCleanupRef.current = crossTabSync.subscribe((data) => {
+        console.log('🎨 Cross-tab strokes update:', data.strokes.length);
         // Apply strokes from other users
         if (data.strokes) {
           setWhiteboardState(prev => ({
@@ -77,21 +77,21 @@ export const useRealtimeSync = () => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Drawing sync connected');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('⚠️ Drawing sync failed, switching to simple sync mode');
-          activateSimpleSync();
+          console.log('⚠️ Drawing sync failed, switching to cross-tab sync');
+          activateCrossTabSync();
         }
       });
 
     } catch (error) {
       console.error('Failed to connect to realtime sync:', error);
-      activateSimpleSync();
+      activateCrossTabSync();
     }
 
-    // Auto-activate simple sync after 3 seconds if no successful connection
+    // Auto-activate cross-tab sync after 3 seconds
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating simple sync for drawing due to timeout');
-        activateSimpleSync();
+        console.log('⏰ Auto-activating cross-tab sync for drawing due to timeout');
+        activateCrossTabSync();
       }
     }, 3000);
 
@@ -110,8 +110,8 @@ export const useRealtimeSync = () => {
 
   const broadcastStroke = useCallback((stroke: DrawStroke) => {
     if (usesFallback) {
-      // Use simple sync mode
-      simpleSync.addStroke(stroke);
+      // Use cross-tab sync mode
+      crossTabSync.addStroke(stroke);
     } else if (channelRef.current) {
       // Use Realtime
       const payload: StrokeBroadcastPayload = {
@@ -140,8 +140,8 @@ export const useRealtimeSync = () => {
 
   const broadcastClear = useCallback(() => {
     if (usesFallback) {
-      // Clear simple sync data
-      simpleSync.clearStrokes();
+      // Clear cross-tab sync data
+      crossTabSync.clearStrokes();
     } else if (channelRef.current) {
       // Use Realtime
       const payload: ClearBroadcastPayload = {

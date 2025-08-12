@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { simpleSync } from '../utils/simpleSync';
+import { crossTabSync } from '../utils/crossTabSync';
 import type { User } from '../types/whiteboard';
 
 const USER_COLORS = [
@@ -112,32 +112,32 @@ export const usePresence = () => {
           await channel.track(currentUserRef.current);
           console.log('✅ Presence tracking started');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('⚠️ Presence failed, switching to simple sync mode');
-          activateSimpleSync();
+          console.log('⚠️ Presence failed, switching to cross-tab sync');
+          activateCrossTabSync();
         }
       });
 
-    const activateSimpleSync = () => {
+    const activateCrossTabSync = () => {
       if (usesFallback) return;
       
-      console.log('🔄 Activating simple sync for presence');
+      console.log('🔄 Activating cross-tab sync for presence');
       setUsesFallback(true);
       
       if (currentUserRef.current) {
-        simpleSync.addUser(currentUserRef.current);
+        crossTabSync.addUser(currentUserRef.current);
       }
       
-      fallbackCleanupRef.current = simpleSync.subscribe((data) => {
-        console.log('👥 Received users update:', data.users.length);
+      fallbackCleanupRef.current = crossTabSync.subscribe((data) => {
+        console.log('👥 Cross-tab users update:', data.users.length);
         setUsers(data.users || []);
       });
     };
 
-    // Auto-activate simple sync after 3 seconds if no successful connection
+    // Auto-activate cross-tab sync after 3 seconds
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating simple sync due to timeout');
-        activateSimpleSync();
+        console.log('⏰ Auto-activating cross-tab sync due to timeout');
+        activateCrossTabSync();
       }
     }, 3000);
 
@@ -164,7 +164,7 @@ export const usePresence = () => {
       currentUserRef.current = updatedUser;
       
       if (usesFallback) {
-        simpleSync.addUser(updatedUser);
+        crossTabSync.addUser(updatedUser);
       } else if (channelRef.current) {
         channelRef.current.track(updatedUser);
       }
