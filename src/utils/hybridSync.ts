@@ -7,10 +7,24 @@ class HybridSync {
   private crossTabData: any = { users: [], messages: [], strokes: [] };
   private multiDeviceData: any = { users: [], messages: [], strokes: [] };
   private isStarted = false;
+  private startPromise: Promise<void> | null = null;
 
   async start() {
-    if (this.isStarted) return;
+    if (this.isStarted) {
+      console.log('🔗 Hybrid sync already started, skipping...');
+      return;
+    }
     
+    if (this.startPromise) {
+      console.log('🔗 Hybrid sync start in progress, waiting...');
+      return this.startPromise;
+    }
+    
+    this.startPromise = this.doStart();
+    return this.startPromise;
+  }
+
+  private async doStart() {
     console.log('🔗 Starting hybrid sync (BroadcastChannel + Database)');
     this.isStarted = true;
 
@@ -25,19 +39,28 @@ class HybridSync {
       this.mergeAndNotify();
     });
 
-    // Subscribe to multi-device sync (database)
-    multiDeviceSync.subscribe((data) => {
-      console.log('🌐 Multi-device data update:', {
-        users: data.users.length, 
-        messages: data.messages.length,
-        strokes: data.strokes.length
+    // Try to start multi-device sync, but continue even if it fails
+    try {
+      // Subscribe to multi-device sync (database)
+      multiDeviceSync.subscribe((data) => {
+        console.log('🌐 Multi-device data update:', {
+          users: data.users.length, 
+          messages: data.messages.length,
+          strokes: data.strokes.length
+        });
+        this.multiDeviceData = data;
+        this.mergeAndNotify();
       });
-      this.multiDeviceData = data;
-      this.mergeAndNotify();
-    });
 
-    // Start multi-device sync
-    await multiDeviceSync.start();
+      // Start multi-device sync
+      await multiDeviceSync.start();
+      console.log('✅ Multi-device sync started successfully');
+    } catch (error) {
+      console.warn('⚠️ Multi-device sync failed to start, continuing with cross-tab only:', error);
+      // Continue with cross-tab sync only
+    }
+    
+    this.startPromise = null;
   }
 
   private mergeAndNotify() {

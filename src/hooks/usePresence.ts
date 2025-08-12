@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { hybridSync } from '../utils/hybridSync';
+import { simpleSync } from '../utils/simpleSync';
 import type { User } from '../types/whiteboard';
 
 const USER_COLORS = [
@@ -112,41 +112,38 @@ export const usePresence = () => {
           await channel.track(currentUserRef.current);
           console.log('✅ Presence tracking started');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('⚠️ Presence failed, switching to hybrid sync');
-          activateHybridSync();
+          console.log('⚠️ Presence failed, switching to simple sync');
+          activateSimpleSync();
         }
       });
 
-    const activateHybridSync = async () => {
+    const activateSimpleSync = async () => {
       if (usesFallback) return;
       
-      console.log('🔗 Activating hybrid sync for presence (BroadcastChannel + Database)');
+      console.log('🔄 Activating simple sync for presence (BroadcastChannel only)');
       setUsesFallback(true);
       
       try {
-        await hybridSync.start();
+        await simpleSync.start();
         
         if (currentUserRef.current) {
-          await hybridSync.addUser(currentUserRef.current);
+          await simpleSync.addUser(currentUserRef.current);
         }
         
-        fallbackCleanupRef.current = hybridSync.subscribe((data) => {
-          console.log('👥 Hybrid users update:', {
-            users: data.users.length,
-            sources: data.users.map((u: any) => u.source || 'unknown').slice(0, 5)
-          });
+        fallbackCleanupRef.current = simpleSync.subscribe((data) => {
+          console.log('👥 Simple sync users update:', data.users.length);
           setUsers(data.users || []);
         });
       } catch (error) {
-        console.error('Failed to start hybrid sync for presence:', error);
+        console.error('Failed to start simple sync for presence:', error);
       }
     };
 
-    // Auto-activate hybrid sync after 3 seconds
+    // Auto-activate simple sync after 3 seconds
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating hybrid sync due to timeout');
-        activateHybridSync();
+        console.log('⏰ Auto-activating simple sync due to timeout');
+        activateSimpleSync();
       }
     }, 3000);
 
@@ -173,7 +170,7 @@ export const usePresence = () => {
       currentUserRef.current = updatedUser;
       
       if (usesFallback) {
-        hybridSync.addUser(updatedUser);
+        simpleSync.addUser(updatedUser);
       } else if (channelRef.current) {
         channelRef.current.track(updatedUser);
       }

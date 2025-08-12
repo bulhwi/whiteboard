@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { hybridSync } from '../utils/hybridSync';
+import { simpleSync } from '../utils/simpleSync';
 import { usePresence } from './usePresence';
 import type { ChatMessage } from '../types/whiteboard';
 
@@ -44,37 +44,34 @@ export const useChat = () => {
       if (status === 'SUBSCRIBED') {
         console.log('✅ Chat connected successfully');
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.log('⚠️ Chat failed, switching to hybrid sync');
-        activateHybridSync();
+        console.log('⚠️ Chat failed, switching to simple sync');
+        activateSimpleSync();
       }
     });
 
-    const activateHybridSync = async () => {
+    const activateSimpleSync = async () => {
       if (usesFallback) return;
       
-      console.log('🔗 Activating hybrid sync for chat (BroadcastChannel + Database)');
+      console.log('🔄 Activating simple sync for chat (BroadcastChannel only)');
       setUsesFallback(true);
       
       try {
-        await hybridSync.start();
+        await simpleSync.start();
         
-        fallbackCleanupRef.current = hybridSync.subscribe((data) => {
-          console.log('💬 Hybrid messages update:', {
-            messages: data.messages.length,
-            sources: data.messages.map((m: any) => m.source || 'unknown').slice(0, 5)
-          });
+        fallbackCleanupRef.current = simpleSync.subscribe((data) => {
+          console.log('💬 Simple sync messages update:', data.messages.length);
           setMessages(data.messages || []);
         });
       } catch (error) {
-        console.error('Failed to start hybrid sync for chat:', error);
+        console.error('Failed to start simple sync for chat:', error);
       }
     };
 
-    // Auto-activate hybrid sync after 3 seconds
+    // Auto-activate simple sync after 3 seconds
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating hybrid sync for chat due to timeout');
-        activateHybridSync();
+        console.log('⏰ Auto-activating simple sync for chat due to timeout');
+        activateSimpleSync();
       }
     }, 3000);
 
@@ -101,9 +98,9 @@ export const useChat = () => {
     };
 
     if (usesFallback) {
-      // Use hybrid sync mode (cross-tab + database)
-      hybridSync.addMessage(newMessage);
-      console.log('📤 Message sent via hybrid sync:', newMessage.content);
+      // Use simple sync mode (cross-tab only)
+      simpleSync.addMessage(newMessage);
+      console.log('📤 Message sent via simple sync:', newMessage.content);
     } else {
       // Add message locally first for immediate feedback (Realtime mode)
       setMessages(prev => [...prev, newMessage]);

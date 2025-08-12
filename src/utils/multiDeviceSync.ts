@@ -49,25 +49,37 @@ class MultiDeviceSync {
       const now = Date.now();
       
       // Get active users (within last 45 seconds)
-      const { data: users } = await supabase
+      const { data: users, error: usersError } = await supabase
         .from('whiteboard_users')
         .select('*')
         .gte('last_seen', new Date(now - 45000).toISOString())
         .order('created_at', { ascending: true });
 
+      if (usersError) {
+        console.warn('Database users query failed:', usersError.message);
+      }
+
       // Get recent messages (last 50)
-      const { data: messages } = await supabase
+      const { data: messages, error: messagesError } = await supabase
         .from('whiteboard_messages')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
 
+      if (messagesError) {
+        console.warn('Database messages query failed:', messagesError.message);
+      }
+
       // Get recent strokes (last 500)
-      const { data: strokes } = await supabase
+      const { data: strokes, error: strokesError } = await supabase
         .from('whiteboard_strokes')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(500);
+
+      if (strokesError) {
+        console.warn('Database strokes query failed:', strokesError.message);
+      }
 
       // Prepare data for listeners
       const syncData = {
