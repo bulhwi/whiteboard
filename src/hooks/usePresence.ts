@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { realUserCount } from '../utils/realUserCount';
+import { simpleUserCount } from '../utils/simpleUserCount';
 import type { User } from '../types/whiteboard';
 
 const USER_COLORS = [
@@ -46,13 +46,13 @@ export const usePresence = () => {
       console.log('👤 Created new currentUser:', currentUserRef.current);
     }
 
-    // 진짜 멀티디바이스 동시접속자 수 추적 시작
-    console.log('👥 Starting real user count tracking...');
-    realUserCount.start();
+    // 간단한 사용자 수 추적 시작 (Supabase 문제 우회)
+    console.log('👥 Starting simple user count tracking...');
+    simpleUserCount.start();
 
     // 사용자 수 변경 구독
-    const unsubscribeUserCount = realUserCount.onUserCountChange((count) => {
-      console.log('👥 Real user count changed:', count);
+    const unsubscribeUserCount = simpleUserCount.onUserCountChange((count) => {
+      console.log('👥 User count changed:', count);
       setUserCount(count);
     });
 
@@ -127,9 +127,9 @@ export const usePresence = () => {
       });
 
     return () => {
-      // realUserCount 정리
+      // simpleUserCount 정리
       unsubscribeUserCount();
-      realUserCount.stop();
+      simpleUserCount.stop();
       
       if (channel) {
         channel.untrack();
