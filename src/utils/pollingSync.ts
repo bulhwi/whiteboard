@@ -4,6 +4,7 @@ class PollingSync {
   private isPolling = false;
   private listeners: Array<(data: any) => void> = [];
   private lastUpdateTime = Date.now();
+  private storageListener: ((event: StorageEvent) => void) | null = null;
 
   start() {
     if (this.isPolling) return;
@@ -15,6 +16,16 @@ class PollingSync {
     this.pollInterval = setInterval(() => {
       this.pollForUpdates();
     }, 2000);
+
+    // Listen for storage events from other tabs
+    this.storageListener = (event: StorageEvent) => {
+      if (event.key === 'whiteboard-sync-trigger' || event.key === 'whiteboard-fallback-data') {
+        const data = this.getLocalData();
+        this.notifyListeners(data);
+      }
+    };
+    
+    window.addEventListener('storage', this.storageListener);
   }
 
   stop() {
@@ -27,16 +38,38 @@ class PollingSync {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
     }
+    
+    if (this.storageListener) {
+      window.removeEventListener('storage', this.storageListener);
+      this.storageListener = null;
+    }
   }
 
   private async pollForUpdates() {
     try {
-      // In a real implementation, you would poll a database table
-      // For now, we'll simulate with localStorage for cross-tab sync
+      // Get current data and notify all listeners
       const data = this.getLocalData();
       this.notifyListeners(data);
+      
+      // Force localStorage event for cross-tab sync
+      this.triggerStorageEvent();
     } catch (error) {
       console.error('Polling error:', error);
+    }
+  }
+
+  private triggerStorageEvent() {
+    try {
+      // Force trigger storage event by updating a timestamp
+      const triggerKey = 'whiteboard-sync-trigger';
+      const currentValue = localStorage.getItem(triggerKey);
+      const newValue = Date.now().toString();
+      
+      if (currentValue !== newValue) {
+        localStorage.setItem(triggerKey, newValue);
+      }
+    } catch (error) {
+      // Ignore storage errors
     }
   }
 
@@ -76,6 +109,12 @@ class PollingSync {
 
       localStorage.setItem('whiteboard-fallback-data', JSON.stringify(current));
       this.lastUpdateTime = Date.now();
+      
+      // Immediately notify listeners about the change
+      this.notifyListeners(current);
+      
+      // Trigger cross-tab sync
+      this.triggerStorageEvent();
     } catch (error) {
       console.error('Error updating fallback data:', error);
     }

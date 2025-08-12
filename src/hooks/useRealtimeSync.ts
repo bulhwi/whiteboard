@@ -1,6 +1,7 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
+import { pollingSync } from '../utils/pollingSync';
 import { useWhiteboardContext } from '../context/WhiteboardContext';
 import { throttle } from '../utils/throttle';
 import type { DrawStroke } from '../types/whiteboard';
@@ -18,7 +19,9 @@ interface ClearBroadcastPayload {
 
 export const useRealtimeSync = () => {
   const { setWhiteboardState, clearCanvas } = useWhiteboardContext();
+  const [usesFallback, setUsesFallback] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const fallbackCleanupRef = useRef<(() => void) | null>(null);
   const userIdRef = useRef<string>(`user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   useEffect(() => {
@@ -51,39 +54,81 @@ export const useRealtimeSync = () => {
       });
 
       channel.subscribe((status) => {
-        console.log('Realtime connection status:', status);
+        console.log('🎨 Drawing sync status:', status);
+        
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Drawing sync connected');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.log('⚠️ Drawing sync failed, switching to fallback mode');
+          activateFallbackMode();
+        }
       });
 
     } catch (error) {
       console.error('Failed to connect to realtime sync:', error);
     }
 
+    const activateFallbackMode = () => {
+      if (usesFallback) return;
+      
+      setUsesFallback(true);
+      pollingSync.start();
+      
+      fallbackCleanupRef.current = pollingSync.onDataChange((data) => {
+        // Apply strokes from other users
+        if (data.strokes) {
+          setWhiteboardState(prev => ({
+            ...prev,
+            strokes: data.strokes,
+          }));
+        }
+      });
+    };
+
+    // Auto-activate fallback after 5 seconds if no successful connection
+    const fallbackTimeout = setTimeout(() => {
+      if (!usesFallback) {
+        console.log('⏰ Auto-activating drawing sync fallback mode due to timeout');
+        activateFallbackMode();
+      }
+    }, 5000);
+
     return () => {
+      clearTimeout(fallbackTimeout);
+      
       if (channel) {
         channel.unsubscribe();
       }
+      
+      if (fallbackCleanupRef.current) {
+        fallbackCleanupRef.current();
+      }
     };
-  }, [setWhiteboardState, clearCanvas]);
+  }, [setWhiteboardState, clearCanvas, usesFallback]);
 
   const broadcastStroke = useCallback((stroke: DrawStroke) => {
-    if (!channelRef.current) return;
-
-    const payload: StrokeBroadcastPayload = {
-      type: 'stroke',
-      stroke,
-      userId: userIdRef.current,
-    };
-    
-    try {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'stroke',
-        payload,
-      });
-    } catch (error) {
-      console.error('Failed to broadcast stroke:', error);
+    if (usesFallback) {
+      // Use fallback mode
+      pollingSync.updateData('stroke', stroke);
+    } else if (channelRef.current) {
+      // Use Realtime
+      const payload: StrokeBroadcastPayload = {
+        type: 'stroke',
+        stroke,
+        userId: userIdRef.current,
+      };
+      
+      try {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'stroke',
+          payload,
+        });
+      } catch (error) {
+        console.error('Failed to broadcast stroke:', error);
+      }
     }
-  }, []);
+  }, [usesFallback]);
 
   // Throttled version for high-frequency updates
   const throttledBroadcastStroke = useMemo(
@@ -92,23 +137,27 @@ export const useRealtimeSync = () => {
   );
 
   const broadcastClear = useCallback(() => {
-    if (!channelRef.current) return;
-
-    const payload: ClearBroadcastPayload = {
-      type: 'clear',
-      userId: userIdRef.current,
-    };
-    
-    try {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'clear',
-        payload,
-      });
-    } catch (error) {
-      console.error('Failed to broadcast clear:', error);
+    if (usesFallback) {
+      // Clear fallback data
+      pollingSync.clearData();
+    } else if (channelRef.current) {
+      // Use Realtime
+      const payload: ClearBroadcastPayload = {
+        type: 'clear',
+        userId: userIdRef.current,
+      };
+      
+      try {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'clear',
+          payload,
+        });
+      } catch (error) {
+        console.error('Failed to broadcast clear:', error);
+      }
     }
-  }, []);
+  }, [usesFallback]);
 
   return {
     broadcastStroke,

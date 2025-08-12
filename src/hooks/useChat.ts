@@ -90,27 +90,30 @@ export const useChat = () => {
       timestamp: Date.now(),
     };
 
-    // Add message locally first for immediate feedback
-    setMessages(prev => [...prev, newMessage]);
-
     if (usesFallback) {
-      // Use fallback mode
+      // In fallback mode, don't add to local state immediately
+      // Let the polling system handle it to prevent duplicates
       pollingSync.updateData('message', newMessage);
       console.log('📤 Message sent via fallback mode:', newMessage.content);
-    } else if (channelRef.current) {
-      // Use Realtime
-      const payload: MessageBroadcastPayload = {
-        type: 'message',
-        message: newMessage,
-        userId: currentUser.id,
-      };
+    } else {
+      // Add message locally first for immediate feedback (Realtime mode)
+      setMessages(prev => [...prev, newMessage]);
+      
+      if (channelRef.current) {
+        // Use Realtime
+        const payload: MessageBroadcastPayload = {
+          type: 'message',
+          message: newMessage,
+          userId: currentUser.id,
+        };
 
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'message',
-        payload,
-      });
-      console.log('📤 Message sent via Supabase:', newMessage.content);
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'message',
+          payload,
+        });
+        console.log('📤 Message sent via Supabase:', newMessage.content);
+      }
     }
   };
 
