@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { pollingSync } from '../utils/pollingSync';
+import { simpleSync } from '../utils/simpleSync';
 import { useWhiteboardContext } from '../context/WhiteboardContext';
 import { throttle } from '../utils/throttle';
 import type { DrawStroke } from '../types/whiteboard';
@@ -59,22 +59,24 @@ export const useRealtimeSync = () => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Drawing sync connected');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('⚠️ Drawing sync failed, switching to fallback mode');
-          activateFallbackMode();
+          console.log('⚠️ Drawing sync failed, switching to simple sync mode');
+          activateSimpleSync();
         }
       });
 
     } catch (error) {
       console.error('Failed to connect to realtime sync:', error);
+      activateSimpleSync();
     }
 
-    const activateFallbackMode = () => {
+    const activateSimpleSync = () => {
       if (usesFallback) return;
       
+      console.log('🔄 Activating simple sync for drawing');
       setUsesFallback(true);
-      pollingSync.start();
       
-      fallbackCleanupRef.current = pollingSync.onDataChange((data) => {
+      fallbackCleanupRef.current = simpleSync.subscribe((data) => {
+        console.log('🎨 Received strokes update:', data.strokes.length);
         // Apply strokes from other users
         if (data.strokes) {
           setWhiteboardState(prev => ({
@@ -85,13 +87,13 @@ export const useRealtimeSync = () => {
       });
     };
 
-    // Auto-activate fallback after 5 seconds if no successful connection
+    // Auto-activate simple sync after 3 seconds if no successful connection
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating drawing sync fallback mode due to timeout');
-        activateFallbackMode();
+        console.log('⏰ Auto-activating simple sync for drawing due to timeout');
+        activateSimpleSync();
       }
-    }, 5000);
+    }, 3000);
 
     return () => {
       clearTimeout(fallbackTimeout);
@@ -108,8 +110,8 @@ export const useRealtimeSync = () => {
 
   const broadcastStroke = useCallback((stroke: DrawStroke) => {
     if (usesFallback) {
-      // Use fallback mode
-      pollingSync.updateData('stroke', stroke);
+      // Use simple sync mode
+      simpleSync.addStroke(stroke);
     } else if (channelRef.current) {
       // Use Realtime
       const payload: StrokeBroadcastPayload = {
@@ -138,8 +140,8 @@ export const useRealtimeSync = () => {
 
   const broadcastClear = useCallback(() => {
     if (usesFallback) {
-      // Clear fallback data
-      pollingSync.clearData();
+      // Clear simple sync data
+      simpleSync.clearStrokes();
     } else if (channelRef.current) {
       // Use Realtime
       const payload: ClearBroadcastPayload = {

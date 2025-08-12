@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { pollingSync } from '../utils/pollingSync';
+import { simpleSync } from '../utils/simpleSync';
 import type { User } from '../types/whiteboard';
 
 const USER_COLORS = [
@@ -112,34 +112,34 @@ export const usePresence = () => {
           await channel.track(currentUserRef.current);
           console.log('✅ Presence tracking started');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('⚠️ Presence failed, switching to fallback mode');
-          activateFallbackMode();
+          console.log('⚠️ Presence failed, switching to simple sync mode');
+          activateSimpleSync();
         }
       });
 
-
-    const activateFallbackMode = () => {
+    const activateSimpleSync = () => {
       if (usesFallback) return;
       
+      console.log('🔄 Activating simple sync for presence');
       setUsesFallback(true);
-      pollingSync.start();
       
       if (currentUserRef.current) {
-        pollingSync.updateData('user', currentUserRef.current);
+        simpleSync.addUser(currentUserRef.current);
       }
       
-      fallbackCleanupRef.current = pollingSync.onDataChange((data) => {
+      fallbackCleanupRef.current = simpleSync.subscribe((data) => {
+        console.log('👥 Received users update:', data.users.length);
         setUsers(data.users || []);
       });
     };
 
-    // Auto-activate fallback after 5 seconds if no successful connection
+    // Auto-activate simple sync after 3 seconds if no successful connection
     const fallbackTimeout = setTimeout(() => {
-      if (channelRef.current && !usesFallback) {
-        console.log('⏰ Auto-activating fallback mode due to timeout');
-        activateFallbackMode();
+      if (!usesFallback) {
+        console.log('⏰ Auto-activating simple sync due to timeout');
+        activateSimpleSync();
       }
-    }, 5000);
+    }, 3000);
 
     return () => {
       clearTimeout(fallbackTimeout);
@@ -151,10 +151,6 @@ export const usePresence = () => {
       
       if (fallbackCleanupRef.current) {
         fallbackCleanupRef.current();
-      }
-      
-      if (usesFallback) {
-        pollingSync.stop();
       }
     };
   }, [usesFallback]);
@@ -168,7 +164,7 @@ export const usePresence = () => {
       currentUserRef.current = updatedUser;
       
       if (usesFallback) {
-        pollingSync.updateData('user', updatedUser);
+        simpleSync.addUser(updatedUser);
       } else if (channelRef.current) {
         channelRef.current.track(updatedUser);
       }

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { pollingSync } from '../utils/pollingSync';
+import { simpleSync } from '../utils/simpleSync';
 import { usePresence } from './usePresence';
 import type { ChatMessage } from '../types/whiteboard';
 
@@ -44,29 +44,30 @@ export const useChat = () => {
       if (status === 'SUBSCRIBED') {
         console.log('✅ Chat connected successfully');
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.log('⚠️ Chat failed, switching to fallback mode');
-        activateFallbackMode();
+        console.log('⚠️ Chat failed, switching to simple sync mode');
+        activateSimpleSync();
       }
     });
 
-    const activateFallbackMode = () => {
+    const activateSimpleSync = () => {
       if (usesFallback) return;
       
+      console.log('🔄 Activating simple sync for chat');
       setUsesFallback(true);
-      pollingSync.start();
       
-      fallbackCleanupRef.current = pollingSync.onDataChange((data) => {
+      fallbackCleanupRef.current = simpleSync.subscribe((data) => {
+        console.log('💬 Received messages update:', data.messages.length);
         setMessages(data.messages || []);
       });
     };
 
-    // Auto-activate fallback after 5 seconds if no successful connection
+    // Auto-activate simple sync after 3 seconds if no successful connection
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating chat fallback mode due to timeout');
-        activateFallbackMode();
+        console.log('⏰ Auto-activating simple sync for chat due to timeout');
+        activateSimpleSync();
       }
-    }, 5000);
+    }, 3000);
 
     return () => {
       clearTimeout(fallbackTimeout);
@@ -91,10 +92,9 @@ export const useChat = () => {
     };
 
     if (usesFallback) {
-      // In fallback mode, don't add to local state immediately
-      // Let the polling system handle it to prevent duplicates
-      pollingSync.updateData('message', newMessage);
-      console.log('📤 Message sent via fallback mode:', newMessage.content);
+      // Use simple sync mode
+      simpleSync.addMessage(newMessage);
+      console.log('📤 Message sent via simple sync:', newMessage.content);
     } else {
       // Add message locally first for immediate feedback (Realtime mode)
       setMessages(prev => [...prev, newMessage]);
