@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { simpleSync } from '../utils/simpleSync';
+import { realUserCount } from '../utils/realUserCount';
 import type { User } from '../types/whiteboard';
 
 const USER_COLORS = [
@@ -30,12 +30,11 @@ const MAX_USERS = 10;
 
 export const usePresence = () => {
   const [users, setUsers] = useState<User[]>([]);
+  const [userCount, setUserCount] = useState<number>(0);
   const [isBlocked, setIsBlocked] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
-  const [usesFallback, setUsesFallback] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const currentUserRef = useRef<User | null>(null);
-  const fallbackCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!currentUserRef.current) {
@@ -46,6 +45,16 @@ export const usePresence = () => {
       };
       console.log('👤 Created new currentUser:', currentUserRef.current);
     }
+
+    // 진짜 멀티디바이스 동시접속자 수 추적 시작
+    console.log('👥 Starting real user count tracking...');
+    realUserCount.start();
+
+    // 사용자 수 변경 구독
+    const unsubscribeUserCount = realUserCount.onUserCountChange((count) => {
+      console.log('👥 Real user count changed:', count);
+      setUserCount(count);
+    });
 
     console.log('🚀 Starting Supabase presence connection...');
     console.log('🔍 Current environment mode:', import.meta.env.MODE);
@@ -112,54 +121,22 @@ export const usePresence = () => {
           await channel.track(currentUserRef.current);
           console.log('✅ Presence tracking started');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('⚠️ Presence failed, switching to simple sync');
-          activateSimpleSync();
+          console.log('⚠️ Presence failed, but real user count still works');
+          // Presence 실패해도 실제 사용자 수는 realUserCount로 추적됨
         }
       });
 
-    const activateSimpleSync = async () => {
-      if (usesFallback) return;
-      
-      console.log('🔄 Activating simple sync for presence (BroadcastChannel only)');
-      setUsesFallback(true);
-      
-      try {
-        await simpleSync.start();
-        
-        if (currentUserRef.current) {
-          await simpleSync.addUser(currentUserRef.current);
-        }
-        
-        fallbackCleanupRef.current = simpleSync.subscribe((data) => {
-          console.log('👥 Simple sync users update:', data.users.length);
-          setUsers(data.users || []);
-        });
-      } catch (error) {
-        console.error('Failed to start simple sync for presence:', error);
-      }
-    };
-
-    // Auto-activate simple sync after 3 seconds
-    const fallbackTimeout = setTimeout(() => {
-      if (!usesFallback) {
-        console.log('⏰ Auto-activating simple sync due to timeout');
-        activateSimpleSync();
-      }
-    }, 3000);
-
     return () => {
-      clearTimeout(fallbackTimeout);
+      // realUserCount 정리
+      unsubscribeUserCount();
+      realUserCount.stop();
       
       if (channel) {
         channel.untrack();
         channel.unsubscribe();
       }
-      
-      if (fallbackCleanupRef.current) {
-        fallbackCleanupRef.current();
-      }
     };
-  }, [usesFallback]);
+  }, []);
 
   const updateCursor = (x: number, y: number) => {
     if (currentUserRef.current) {
@@ -169,9 +146,8 @@ export const usePresence = () => {
       };
       currentUserRef.current = updatedUser;
       
-      if (usesFallback) {
-        simpleSync.addUser(updatedUser);
-      } else if (channelRef.current) {
+      // Supabase Presence로 커서 위치만 업데이트
+      if (channelRef.current) {
         channelRef.current.track(updatedUser);
       }
     }
@@ -183,6 +159,7 @@ export const usePresence = () => {
 
   return {
     users,
+    userCount, // 진짜 멀티디바이스 동시접속자 수
     currentUser: currentUserRef.current,
     updateCursor,
     isBlocked,

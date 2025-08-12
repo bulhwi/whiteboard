@@ -4,8 +4,9 @@ import { usePresence } from '../../hooks/usePresence';
 const MAX_USERS = 10;
 
 const Presence: React.FC = () => {
-  const { users } = usePresence();
-  const currentUserCount = users.length;
+  const { users, userCount } = usePresence();
+  // 진짜 멀티디바이스 동시접속자 수를 사용
+  const currentUserCount = userCount > 0 ? userCount : users.length;
 
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 p-2 sm:p-4 bg-white border border-gray-300 rounded-lg shadow-md">

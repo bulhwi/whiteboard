@@ -1,6 +1,24 @@
 -- Supabase 테이블 생성 스크립트
 -- 실시간 낙서판을 위한 데이터베이스 스키마
 
+-- 0. 실시간 동시접속자 수 관리 테이블 (우선순위 1)
+CREATE TABLE IF NOT EXISTS active_users (
+  id TEXT PRIMARY KEY,
+  joined_at TIMESTAMPTZ DEFAULT NOW(),
+  last_heartbeat TIMESTAMPTZ DEFAULT NOW(),
+  user_agent TEXT,
+  ip_info TEXT DEFAULT 'unknown'
+);
+
+-- 인덱스 생성 (성능 최적화)
+CREATE INDEX IF NOT EXISTS idx_active_users_last_heartbeat ON active_users(last_heartbeat);
+
+-- RLS (Row Level Security) 활성화
+ALTER TABLE active_users ENABLE ROW LEVEL SECURITY;
+
+-- 모든 사용자가 읽고 쓸 수 있도록 정책 설정
+CREATE POLICY IF NOT EXISTS "Enable all operations for active_users" ON active_users FOR ALL USING (true);
+
 -- 1. 화이트보드 사용자 테이블
 CREATE TABLE IF NOT EXISTS whiteboard_users (
   id TEXT PRIMARY KEY,
