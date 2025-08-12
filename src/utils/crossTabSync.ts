@@ -129,14 +129,20 @@ class CrossTabSync {
   private cleanupOldUsers() {
     const now = Date.now();
     let hasChanges = false;
+    const currentCount = this.data.users.size;
     
     for (const [userId, user] of this.data.users.entries()) {
-      if (user.lastSeen && (now - user.lastSeen) > 45000) { // 45 second timeout
-        console.log('🧹 Removing inactive user:', user.nickname);
+      if (user.lastSeen && (now - user.lastSeen) > 30000) { // Reduced to 30 seconds
+        console.log('🧹 Removing inactive user:', user.nickname, 'Last seen:', Math.floor((now - user.lastSeen) / 1000), 'seconds ago');
         this.data.users.delete(userId);
         this.broadcast('user-remove', { id: userId });
         hasChanges = true;
       }
+    }
+    
+    const newCount = this.data.users.size;
+    if (currentCount !== newCount) {
+      console.log('👥 User count changed:', currentCount, '→', newCount);
     }
     
     if (hasChanges) {

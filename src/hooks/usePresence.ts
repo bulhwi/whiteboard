@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { crossTabSync } from '../utils/crossTabSync';
+import { hybridSync } from '../utils/hybridSync';
 import type { User } from '../types/whiteboard';
 
 const USER_COLORS = [
@@ -112,32 +112,41 @@ export const usePresence = () => {
           await channel.track(currentUserRef.current);
           console.log('✅ Presence tracking started');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('⚠️ Presence failed, switching to cross-tab sync');
-          activateCrossTabSync();
+          console.log('⚠️ Presence failed, switching to hybrid sync');
+          activateHybridSync();
         }
       });
 
-    const activateCrossTabSync = () => {
+    const activateHybridSync = async () => {
       if (usesFallback) return;
       
-      console.log('🔄 Activating cross-tab sync for presence');
+      console.log('🔗 Activating hybrid sync for presence (BroadcastChannel + Database)');
       setUsesFallback(true);
       
-      if (currentUserRef.current) {
-        crossTabSync.addUser(currentUserRef.current);
+      try {
+        await hybridSync.start();
+        
+        if (currentUserRef.current) {
+          await hybridSync.addUser(currentUserRef.current);
+        }
+        
+        fallbackCleanupRef.current = hybridSync.subscribe((data) => {
+          console.log('👥 Hybrid users update:', {
+            users: data.users.length,
+            sources: data.users.map((u: any) => u.source || 'unknown').slice(0, 5)
+          });
+          setUsers(data.users || []);
+        });
+      } catch (error) {
+        console.error('Failed to start hybrid sync for presence:', error);
       }
-      
-      fallbackCleanupRef.current = crossTabSync.subscribe((data) => {
-        console.log('👥 Cross-tab users update:', data.users.length);
-        setUsers(data.users || []);
-      });
     };
 
-    // Auto-activate cross-tab sync after 3 seconds
+    // Auto-activate hybrid sync after 3 seconds
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating cross-tab sync due to timeout');
-        activateCrossTabSync();
+        console.log('⏰ Auto-activating hybrid sync due to timeout');
+        activateHybridSync();
       }
     }, 3000);
 
@@ -164,7 +173,7 @@ export const usePresence = () => {
       currentUserRef.current = updatedUser;
       
       if (usesFallback) {
-        crossTabSync.addUser(updatedUser);
+        hybridSync.addUser(updatedUser);
       } else if (channelRef.current) {
         channelRef.current.track(updatedUser);
       }

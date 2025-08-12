@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
-import { crossTabSync } from '../utils/crossTabSync';
+import { hybridSync } from '../utils/hybridSync';
 import { useWhiteboardContext } from '../context/WhiteboardContext';
 import { throttle } from '../utils/throttle';
 import type { DrawStroke } from '../types/whiteboard';
@@ -25,22 +25,32 @@ export const useRealtimeSync = () => {
   const userIdRef = useRef<string>(`user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   useEffect(() => {
-    const activateCrossTabSync = () => {
+    const activateHybridSync = async () => {
       if (usesFallback) return;
       
-      console.log('🔄 Activating cross-tab sync for drawing');
+      console.log('🔗 Activating hybrid sync for drawing (BroadcastChannel + Database)');
       setUsesFallback(true);
       
-      fallbackCleanupRef.current = crossTabSync.subscribe((data) => {
-        console.log('🎨 Cross-tab strokes update:', data.strokes.length);
-        // Apply strokes from other users
-        if (data.strokes) {
-          setWhiteboardState(prev => ({
-            ...prev,
-            strokes: data.strokes,
-          }));
-        }
-      });
+      try {
+        await hybridSync.start();
+        
+        fallbackCleanupRef.current = hybridSync.subscribe((data) => {
+          console.log('🎨 Hybrid strokes update:', {
+            strokes: data.strokes.length,
+            sources: data.strokes.map((s: any) => s.source || 'unknown').slice(0, 5)
+          });
+          
+          // Apply strokes from all sources (cross-tab + multi-device)
+          if (data.strokes) {
+            setWhiteboardState(prev => ({
+              ...prev,
+              strokes: data.strokes,
+            }));
+          }
+        });
+      } catch (error) {
+        console.error('Failed to start hybrid sync:', error);
+      }
     };
 
     let channel: RealtimeChannel;
@@ -77,21 +87,21 @@ export const useRealtimeSync = () => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Drawing sync connected');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('⚠️ Drawing sync failed, switching to cross-tab sync');
-          activateCrossTabSync();
+          console.log('⚠️ Drawing sync failed, switching to hybrid sync');
+          activateHybridSync();
         }
       });
 
     } catch (error) {
       console.error('Failed to connect to realtime sync:', error);
-      activateCrossTabSync();
+      activateHybridSync();
     }
 
-    // Auto-activate cross-tab sync after 3 seconds
+    // Auto-activate hybrid sync after 3 seconds
     const fallbackTimeout = setTimeout(() => {
       if (!usesFallback) {
-        console.log('⏰ Auto-activating cross-tab sync for drawing due to timeout');
-        activateCrossTabSync();
+        console.log('⏰ Auto-activating hybrid sync for drawing due to timeout');
+        activateHybridSync();
       }
     }, 3000);
 
@@ -110,8 +120,8 @@ export const useRealtimeSync = () => {
 
   const broadcastStroke = useCallback((stroke: DrawStroke) => {
     if (usesFallback) {
-      // Use cross-tab sync mode
-      crossTabSync.addStroke(stroke);
+      // Use hybrid sync mode (cross-tab + database)
+      hybridSync.addStroke(stroke);
     } else if (channelRef.current) {
       // Use Realtime
       const payload: StrokeBroadcastPayload = {
@@ -140,8 +150,8 @@ export const useRealtimeSync = () => {
 
   const broadcastClear = useCallback(() => {
     if (usesFallback) {
-      // Clear cross-tab sync data
-      crossTabSync.clearStrokes();
+      // Clear hybrid sync data (cross-tab + database)
+      hybridSync.clearStrokes();
     } else if (channelRef.current) {
       // Use Realtime
       const payload: ClearBroadcastPayload = {
