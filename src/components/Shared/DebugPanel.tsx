@@ -15,8 +15,8 @@ const DebugPanel: React.FC = () => {
           urlPreview: import.meta.env.VITE_SUPABASE_URL?.substring(0, 30) + '...'
         },
         supabase: {
-          url: supabase.supabaseUrl,
-          key: supabase.supabaseKey?.substring(0, 20) + '...'
+          url: import.meta.env.VITE_SUPABASE_URL,
+          key: import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 20) + '...'
         },
         realtime: {
           status: 'testing...'
@@ -24,24 +24,24 @@ const DebugPanel: React.FC = () => {
       };
 
       // Test basic connection
+      let connectionResult = 'success';
       try {
         await supabase.from('_test').select('*').limit(1);
-        info.connection = 'success';
       } catch (error: any) {
-        info.connection = error.message;
+        connectionResult = error.message;
       }
 
       // Test realtime
       const testChannel = supabase.channel('debug-test');
       testChannel.subscribe((status) => {
         info.realtime.status = status;
-        setDebugInfo({ ...info });
+        setDebugInfo({ ...info, connection: connectionResult });
         if (status === 'SUBSCRIBED') {
           testChannel.unsubscribe();
         }
       });
 
-      setDebugInfo(info);
+      setDebugInfo({ ...info, connection: connectionResult });
     };
 
     if (isVisible) {

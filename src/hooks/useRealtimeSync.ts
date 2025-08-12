@@ -25,6 +25,24 @@ export const useRealtimeSync = () => {
   const userIdRef = useRef<string>(`user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   useEffect(() => {
+    const activateSimpleSync = () => {
+      if (usesFallback) return;
+      
+      console.log('🔄 Activating simple sync for drawing');
+      setUsesFallback(true);
+      
+      fallbackCleanupRef.current = simpleSync.subscribe((data) => {
+        console.log('🎨 Received strokes update:', data.strokes.length);
+        // Apply strokes from other users
+        if (data.strokes) {
+          setWhiteboardState(prev => ({
+            ...prev,
+            strokes: data.strokes,
+          }));
+        }
+      });
+    };
+
     let channel: RealtimeChannel;
 
     try {
@@ -68,24 +86,6 @@ export const useRealtimeSync = () => {
       console.error('Failed to connect to realtime sync:', error);
       activateSimpleSync();
     }
-
-    const activateSimpleSync = () => {
-      if (usesFallback) return;
-      
-      console.log('🔄 Activating simple sync for drawing');
-      setUsesFallback(true);
-      
-      fallbackCleanupRef.current = simpleSync.subscribe((data) => {
-        console.log('🎨 Received strokes update:', data.strokes.length);
-        // Apply strokes from other users
-        if (data.strokes) {
-          setWhiteboardState(prev => ({
-            ...prev,
-            strokes: data.strokes,
-          }));
-        }
-      });
-    };
 
     // Auto-activate simple sync after 3 seconds if no successful connection
     const fallbackTimeout = setTimeout(() => {

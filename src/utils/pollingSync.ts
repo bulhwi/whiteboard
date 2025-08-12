@@ -3,7 +3,6 @@ class PollingSync {
   private pollInterval: NodeJS.Timeout | null = null;
   private isPolling = false;
   private listeners: Array<(data: any) => void> = [];
-  private lastUpdateTime = Date.now();
   private storageListener: ((event: StorageEvent) => void) | null = null;
 
   start() {
@@ -108,7 +107,6 @@ class PollingSync {
       }
 
       localStorage.setItem('whiteboard-fallback-data', JSON.stringify(current));
-      this.lastUpdateTime = Date.now();
       
       // Immediately notify listeners about the change
       this.notifyListeners(current);
